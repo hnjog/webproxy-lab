@@ -6,7 +6,7 @@
 
 int main(void)
 {
-  char *buf, *p;
+  char *buf, *p, *method;
   char arg1[MAXLINE], arg2[MAXLINE], content[MAXLINE];
   int n1 = 0, n2 = 0;
 
@@ -28,6 +28,8 @@ int main(void)
     n2 = atoi(arg2);
   }
 
+  method = getenv("METHOD");
+
   // 응답용 바디 만들기
   sprintf(content, "QUERY_STRING=%s", buf);
   sprintf(content, "Welcome to add.com");
@@ -35,12 +37,15 @@ int main(void)
   sprintf(content, "%sThe answer is : %d + %d = %d \r\n<p>", content, n1, n2, n1 + n2);
   sprintf(content, "%sThanks for visiting!\r\n", content);
 
-
   // HTTP 응답 만들기
   printf("Connection : close\r\n");
   printf("Content-length: %d\r\n",(int)strlen(content));
   printf("Content-type : text/html\r\n\r\n");
-  printf("%s",content);
+
+  if(method == "GET")
+  {
+    printf("%s",content);
+  }
   fflush(stdout); // 표준 출력 버퍼 비우기
 
   exit(0);

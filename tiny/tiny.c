@@ -11,9 +11,9 @@
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
-void serve_static(int fd, char *filename, int filesize);
+void serve_static(int fd, char *filename, int filesize, char* method);
 void get_filetype(char *filename, char *filetype);
-void serve_dynamic(int fd, char *filename, char *cgiargs);
+void serve_dynamic(int fd, char *filename, char *cgiargs, char* method);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
 
@@ -62,7 +62,7 @@ void doit(int fd)
 
   // 예제 코드는 "GET"만 구현하였기에
   // 차후 다른 명령어 구현하려 한다면 일단 이부분 수정을 고려하기
-  if (strcmp(method, "GET"))
+  if (strcmp(method, "GET") && strcmp(method,"HEAD"))
   {
     clienterror(fd, method, "501", "Not implemented", "Tiny does not implement this method");
     return;
@@ -87,7 +87,7 @@ void doit(int fd)
       return;
     }
 
-    serve_static(fd, filename, sbuf.st_size);
+    serve_static(fd, filename, sbuf.st_size,method);
   }
   else
   {
@@ -98,7 +98,7 @@ void doit(int fd)
       return;
     }
 
-    serve_dynamic(fd, filename, cgiargs);
+    serve_dynamic(fd, filename, cgiargs,method);
   }
 }
 
@@ -114,7 +114,7 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
           body);
   sprintf(body, "%s%s: %s\r\n", body, errnum, shortmsg);
   sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);
-  sprintf(body, "%s<hr><em> The Tiny Web server</em>\r\n", body);
+  sprintf(body, "%s<hr><em> The Tiny Web server</em><html>\r\n", body);
 
   // HTTP response header
   sprintf(buf, "HTTP/1.0 %s %s \r\n", errnum, shortmsg);
@@ -185,7 +185,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
   }
 }
 
-void serve_static(int fd, char *filename, int filesize)
+void serve_static(int fd, char *filename, int filesize, char* method)
 {
   int srcfd;
   char *srcp, filetype[MAXLINE], buf[MAXBUF];
@@ -200,6 +200,9 @@ void serve_static(int fd, char *filename, int filesize)
   Rio_writen(fd, buf, strlen(buf));
   printf("Response headers:\n");
   printf("%s", buf);
+
+  if(strcmp(method,"GET"))
+    return;
 
   // 클라에 응답 바디 보내기
 
@@ -217,7 +220,11 @@ void serve_static(int fd, char *filename, int filesize)
   // 이런식으로 가상 메모리 주소 공간에 할당하면
   // 현재 프로세스가 파일의 위치를 지속적으로 알 수 있으므로
   // 매번 Read 같은 함수를 호출할 필요가 없음
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+  //srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+
+  srcp = (char*)Malloc(filesize);
+
+  Rio_readn(srcfd,srcp,filesize);
 
   // Open한 파일 디스크립터를 닫아준다
   Close(srcfd);
@@ -226,7 +233,8 @@ void serve_static(int fd, char *filename, int filesize)
   Rio_writen(fd, srcp, filesize);
 
   // 파일 데이터를 unmap 함으로서 가상 메모리 매핑을 해제한다
-  Munmap(srcp, filesize);
+  //Munmap(srcp, filesize);
+  Free(srcp);
 
   // Close와 Munmap을 모두 호출해야
   // 디스크에서 메인 메모리로 가져온 데이터 들이 '해제'된다
@@ -255,13 +263,17 @@ void get_filetype(char *filename, char *filetype)
   {
     strcpy(filetype, "image/jpeg");
   }
+  else if (strstr(filename, ".Mpg")) // 숙제 11.7
+  {
+    strcpy(filetype, "video/mpeg");
+  }
   else
   {
     strcpy(filetype, "text/plain");
   }
 }
 
-void serve_dynamic(int fd, char *filename, char *cgiargs)
+void serve_dynamic(int fd, char *filename, char *cgiargs, char* method)
 {
   char buf[MAXLINE], *emptylist[] = {NULL,};
   
@@ -271,12 +283,25 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
   sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
   Rio_writen(fd, buf, strlen(buf));
 
+  // Fork 호출 시점에 자식 프로세스가 현재 프로세스에서 생성되고 복사된다
+  // Fork가 자식 프로세스 의 ID를 호출한다
+  // 부모 프로세스의 PID는 0이 아니기에 Fork 내부로 들어가지 않고
+  // 자식만 들어가게 됨
   if(Fork() == 0)
   {
-    // 자식들
+    // 자식 프로세스에서 환경 변수를 설정함
     setenv("QUERY_STRING",cgiargs,1);
+    setenv("METHOD",method,1);
+
+    // 자식 프로세스의 출력을 fd로 연결
     Dup2(fd,STDOUT_FILENO);
+
+    // CGI 프로그램(외부 프로그럄)을 실행시킴
     execve(filename,emptylist,environ);
+
   }
+
+  // 자식 프로세스가 종료될때까지 대기
+  // SIGCHILD
   Wait(NULL);
 }
