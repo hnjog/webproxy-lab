@@ -10,6 +10,8 @@ LDFLAGS = -lpthread
 
 all: proxy
 
+sbuf.o: sbuf.c sbuf.h
+	$(CC) $(CFLAGS) -c sbuf.c
 
 csapp.o: csapp.c csapp.h
 	$(CC) $(CFLAGS) -c csapp.c
@@ -17,8 +19,8 @@ csapp.o: csapp.c csapp.h
 proxy.o: proxy.c csapp.h
 	$(CC) $(CFLAGS) -c proxy.c
 
-proxy: proxy.o csapp.o
-	$(CC) $(CFLAGS) proxy.o csapp.o -o proxy $(LDFLAGS)
+proxy: proxy.o csapp.o sbuf.o
+	$(CC) $(CFLAGS) proxy.o csapp.o sbuf.o -o proxy $(LDFLAGS)
 
 echoclient.o: echoclient.c csapp.h
 	$(CC) $(CFLAGS) -c echoclient.c

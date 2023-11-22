@@ -1,9 +1,13 @@
 #include <stdio.h>
 #include "csapp.h"
+#include "sbuf.h"
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+
+#define NTHEADS 4
+#define SBUFSIZE 16
 
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr =
@@ -17,6 +21,10 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
 
 void make_header(char *method, char *request_ip, char *user_agent_hdr, char *version, int requested_fd, char *filename);
+
+void* threadWork(void *vargs);
+
+sbuf_t sbuf;
 
 // 일단 프록시 서버는 클라에서 요청하는 정적인 컨텐츠를 처내는 용도임을 잊지 말자
 // 일단 tiny에서 사용한 녀석들 중
@@ -201,6 +209,7 @@ int main(int argc, char **argv)
   char hostname[MAXLINE], port[MAXLINE];
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
+  pthread_t tid;
 
   /* Check command line args */
   if (argc != 2)
@@ -210,13 +219,35 @@ int main(int argc, char **argv)
   }
 
   listenfd = Open_listenfd(argv[1]);
+
+  // 쓰레드 생성
+  sbuf_init(&sbuf,SBUFSIZE);
+  for(int i = 0; i < NTHEADS;i++)
+  {
+    Pthread_create(&tid,NULL,threadWork,NULL);
+  }
+  
   while (1)
   {
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen); // 연결 요청 접수
     Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
     printf("Accepted connection from (%s, %s)\n", hostname, port);
+    sbuf_insert(&sbuf,connfd);
+  }
+
+  sbuf_deinit(&sbuf);
+}
+
+void* threadWork(void *vargs)
+{
+  Pthread_detach(pthread_self());
+
+  while (1)
+  {
+    int connfd = sbuf_remove(&sbuf);
     doit(connfd);  // 트랜잭션 수행
     Close(connfd); // 연결 닫기
   }
+  
 }
