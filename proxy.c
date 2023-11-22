@@ -12,7 +12,7 @@ static const char *user_agent_hdr =
 
 void doit(int fd);
 void parse_uri(char *uri, char *request_ip, char *port, char *filename);
-void serve_Proxy(int servefd,int clientfd, char *filename, int filesize, char *method);
+void serve_Proxy(int servefd, int clientfd);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
 
@@ -50,16 +50,16 @@ void doit(int fd)
   // 내부에서 return
   parse_uri(uri, request_ip, port, filename);
 
-  printf("request IP : %s\r\n",request_ip);
-  printf("Port : %s\r\n",port);
-  printf("filename : %s\r\n",filename);
+  printf("request IP : %s\r\n", request_ip);
+  printf("Port : %s\r\n", port);
+  printf("filename : %s\r\n", filename);
   requested_fd = Open_clientfd(request_ip, port);
 
   // 서버로 전송함
   make_header(method, request_ip, user_agent_hdr, version, requested_fd, filename);
 
   // 어차피 서버에서
-  serve_Proxy(requested_fd,fd,filename,MAXLINE,method);
+  serve_Proxy(requested_fd, fd);
   Close(requested_fd);
 }
 
@@ -67,18 +67,20 @@ void doit(int fd)
 void parse_uri(char *uri, char *request_ip, char *port, char *filename)
 {
   // http:// 가 앞에 붙어서 오네??
-  char tempUri[MAXBUF] = {0,};
+  char tempUri[MAXBUF] = {
+      0,
+  };
   char *ptr = strchr(uri, '/');
   size_t templen = strlen(ptr + 2);
-  strncpy(tempUri, ptr + 2,templen);
-  ptr = strchr(tempUri,':');
+  strncpy(tempUri, ptr + 2, templen);
+  ptr = strchr(tempUri, ':');
 
   // port 존재 (:이 있다)
   if (ptr != NULL)
   {
-    *ptr = '\0';             // 기준점에 null 문자 넣어주고
+    *ptr = '\0';                 // 기준점에 null 문자 넣어주고
     strcpy(request_ip, tempUri); // 전반부는 요청 IP에
-    strcpy(port, ptr + 1);   // 이후는 port번호로 넣어준다
+    strcpy(port, ptr + 1);       // 이후는 port번호로 넣어준다
 
     ptr = strchr(port, '/');
     // port 번호 이후 요청하는 파일 이름이 있다면
@@ -127,14 +129,14 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
   char buf[MAXLINE], body[MAXBUF];
 
   // HTTP response body
-  sprintf(body, "<html><title>Tiny Error</title>");
+  sprintf(body, "<html><title>Proxy Error</title>");
   sprintf(body, "%s<body bgcolor = "
                 "ffffff"
                 ">\r\n",
           body);
   sprintf(body, "%s%s: %s\r\n", body, errnum, shortmsg);
   sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);
-  sprintf(body, "%s<hr><em> The Tiny Web server</em><html>\r\n", body);
+  sprintf(body, "%s<hr><em> The Proxy Web server</em><html>\r\n", body);
 
   // HTTP response header
   sprintf(buf, "HTTP/1.0 %s %s \r\n", errnum, shortmsg);
@@ -147,20 +149,49 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
   Rio_writen(fd, body, strlen(buf));
 }
 
-void serve_Proxy(int servefd,int clientfd, char *filename, int filesize, char *method)
+void serve_Proxy(int servefd, int clientfd)
 {
-  char *srcp;
+  int src_size;
+  char *srcp, *p, content_length[MAXLINE], buf[MAXBUF];
+  rio_t server_rio;
 
-  // 백 서버가 보낸 내용 읽기
-  // 어차피 같은 fd로 보내주기에
-  // 믿고 써보자
-  srcp = (char*)Malloc(filesize);
+  // Rio 에 server 파일 디스크립터를 넣음
+  Rio_readinitb(&server_rio, servefd);
 
-  // 정 안되면 여기서
-  Rio_readn(servefd,srcp,filesize);
+  // 첫 번째 라인을 읽음
+  Rio_readlineb(&server_rio, buf, MAXLINE);
 
-  Rio_writen(clientfd,srcp,filesize);
+  // 클라이언트 에 현재 읽은 첫번째 라인 써주기
+  Rio_writen(clientfd, buf, strlen(buf));
 
+  // 헤더 처리 구문
+  // tiny에서 헤더 마지막에 "\r\n"을 쓰므로
+  // 그 전까지 읽는다
+  while (strcmp(buf, "\r\n"))
+  {
+    // 하나의 라인을 읽었는데 그 라인에 길이 관련 내용이 있다
+    if (strstr(buf, "Content-length:") != NULL)
+    {
+      printf("find it!\r\n");
+      // 해당 라인의 공백으로 (Content-length:) 의 이후
+      p = index(buf, ' ');
+      // 이후 부분부터 content_length에 복사
+      strcpy(content_length, p + 1);
+      // atoi를 통해 src_size를 구한다
+      src_size = atoi(content_length);
+    }
+
+    // 한줄 한줄 읽어준다
+    Rio_readlineb(&server_rio, buf, MAXLINE);
+
+    // 헤더는 한줄 읽을 때마다 보내준다
+    Rio_writen(clientfd, buf, strlen(buf));
+  }
+
+  // 본문 보내기
+  srcp = Malloc(src_size);
+  Rio_readnb(&server_rio, srcp, src_size);
+  Rio_writen(clientfd, srcp, src_size);
   Free(srcp);
 }
 
