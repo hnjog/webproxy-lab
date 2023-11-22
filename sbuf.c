@@ -27,6 +27,8 @@ void sbuf_insert(sbuf_t * sp, int item)
     // 다른 스레드들도 V가 호출되기 전까지 대기 해야 함
     // 그러므로 그 두 사이의 영역은 V가 호출될 때까지 이 스레드만 사용하고
     // 데이터가 업데이트 됨(강제로 동기화가 된다)
+    // Race condition(경쟁 상태)를 피하고, 코드의 무결성 유지
+    // Race condition : 둘 이상의 프로세스나 스레드가 공유 자원에 동시에 접근하여 예측 불가능한 상황을 초래
     int targetIndex = (sp->rear + 1) % (sp->n);
     sp->buf[targetIndex] = item;
     V(&sp->mutex);
