@@ -10,7 +10,7 @@ typedef struct
     int n;          // 최대 슬롯수
     int front;      // buf[(front+1)%n]을 통해 첫번째 슬롯에 있는 녀석 가리킴
     int rear;       // buf[rear%n]을 통해 마지막에 있는 녀석 가리킴
-    sem_t mutex; // 버퍼에 접근하려는 것을 제한
+    sem_t mutex; // 버퍼에 접근하려는 것을 제한 (공용 스레드들이 데이터를 쓰고 읽을 때에는 mutex를 통해 정지시켜야 함) (mutex : 상호 배타성 목적의 바이너리 세마포어)
     sem_t slots; // 사용 가능한 슬롯
     sem_t items; // 사용 가능한 아이템
 } sbuf_t;
