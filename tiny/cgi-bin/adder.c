@@ -42,7 +42,7 @@ int main(void)
   printf("Content-length: %d\r\n",(int)strlen(content));
   printf("Content-type : text/html\r\n\r\n");
 
-  if(method == "GET")
+  if(!strcmp(method, "GET"))
   {
     printf("%s",content);
   }

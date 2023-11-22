@@ -8,7 +8,7 @@ CC = gcc
 CFLAGS = -g -Wall
 LDFLAGS = -lpthread
 
-#all: proxy
+all: proxy
 
 
 csapp.o: csapp.c csapp.h
